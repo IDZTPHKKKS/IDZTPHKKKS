@@ -353,9 +353,6 @@ body {
 .flexbox-item {
   min-width: max-content;
 }
-.buynow {
-  display: none;
-}
 
 .namebox {
   height: 400px;
