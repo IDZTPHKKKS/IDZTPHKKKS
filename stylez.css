@@ -350,10 +350,6 @@ body {
 .subh {
   white-space: none;
 }
-
-.a {
-  display: none;
-}
 .flexbox-item {
   min-width: max-content;
 }
