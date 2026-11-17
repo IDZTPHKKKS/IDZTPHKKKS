@@ -14,7 +14,7 @@ stuff i'm working on rn:
 <tr>
 <td width="50%" valign="top">
 <a href="https://github.com/IDZTPHKKKS/go2-fall-risk"><img src="https://raw.githubusercontent.com/IDZTPHKKKS/go2-fall-risk/main/paper/figs/fork.gif" width="100%" alt="go2-fall-risk"></a><br>
-<a href="https://github.com/IDZTPHKKKS/go2-fall-risk"><b>go2-fall-risk</b></a>: do world models know when a robot dog is about to fall? (spoiler: they're way too optimistic)
+<a href="https://github.com/IDZTPHKKKS/go2-fall-risk"><b>go2-fall-risk</b></a>: do world models know when a robot dog is about to fall?
 </td>
 <td width="50%" valign="top">
 <a href="https://github.com/IDZTPHKKKS/Sybil4Drones"><img src="https://raw.githubusercontent.com/IDZTPHKKKS/Sybil4Drones/main/media/cave_demo.gif" width="100%" alt="Sybil4Drones"></a><br>
