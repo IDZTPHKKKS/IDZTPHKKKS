@@ -6,9 +6,9 @@
 
 ### hey, i'm shyaam 👋
 
-robotics masters at iisc. used to do a lot of cfd, now it's mostly robots + ml.
+love immersive problems relating to computational modelling :)
 
-stuff i'm working on rn :)
+stuff i'm working on rn:
 
 - [**go2-fall-risk**](https://github.com/IDZTPHKKKS/go2-fall-risk): do world models know when a robot dog is about to fall? (spoiler: they're way too optimistic)
 - [**Sybil4Drones**](https://github.com/IDZTPHKKKS/Sybil4Drones): one hacked drone spawns fake teammates and messes up everyone's map. also how to catch it

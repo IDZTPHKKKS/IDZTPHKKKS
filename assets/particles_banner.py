@@ -16,48 +16,24 @@ F_NOISE, F_FLOW, F_MORPH, F_HOLD, F_DISS = 18, 62, 38, 26, 34
 NF = F_NOISE + F_FLOW + F_MORPH + F_HOLD + F_DISS
 DUR = 50  # ms per frame
 
-# ---------------- robot silhouette (quadruped, side view)
-def robot_mask():
-    m = Image.new("L", (W, H), 0)
-    d = ImageDraw.Draw(m)
-    cx, cy = W * 0.5, H * 0.46
-    bw, bh = 300, 74
-    # body
-    d.rounded_rectangle([cx - bw/2, cy - bh/2, cx + bw/2, cy + bh/2], radius=26, fill=255)
-    # head
-    hx = cx + bw/2 - 6
-    d.rounded_rectangle([hx, cy - bh/2 - 6, hx + 64, cy + 18], radius=16, fill=255)
-    # sensor "eye" cut out later (kept as hole)
-    # legs: hip -> knee -> foot
-    def leg(hip, knee, foot, wth=20):
-        for (a, b) in [(hip, knee), (knee, foot)]:
-            d.line([a, b], fill=255, width=wth)
-        for p, r in [(hip, 17), (knee, 13), (foot, 11)]:
-            d.ellipse([p[0]-r, p[1]-r, p[0]+r, p[1]+r], fill=255)
-    gy = cy + bh/2 + 100
-    leg((cx + 100, cy + 18), (cx + 128, cy + 72), (cx + 108, gy))   # front far-ish
-    leg((cx + 60,  cy + 22), (cx + 90,  cy + 76), (cx + 66,  gy))
-    leg((cx - 70,  cy + 22), (cx - 40,  cy + 76), (cx - 64,  gy))
-    leg((cx - 112, cy + 18), (cx - 82,  cy + 72), (cx - 106, gy))
-    a = np.asarray(m) > 0
-    # eye hole
-    yy, xx = np.mgrid[0:H, 0:W]
-    a &= ~(((xx - (hx + 44))**2 + (yy - (cy - 10))**2) < 8**2)
-    return a
-
-mask = robot_mask()
-# edge = mask minus eroded mask
-er = mask.copy()
-for dx, dy in [(1,0),(-1,0),(0,1),(0,-1),(2,0),(-2,0),(0,2),(0,-2)]:
-    er &= np.roll(np.roll(mask, dy, 0), dx, 1)
-edge = mask & ~er
-ey, ex = np.nonzero(edge); fy, fx = np.nonzero(er)
-n_edge = int(N * 0.62)
+# ---------------- robot: Unitree Go2 silhouette rendered from MuJoCo (go2_mask.py)
+_z = np.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "go2.npz"))
+seg, depth = _z["seg"], _z["depth"]
+mask = seg >= 0
+# part edges: pixels whose neighbour belongs to a different geom (or background)
+edge = np.zeros_like(mask)
+for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+    edge |= mask & (np.roll(np.roll(seg, dy, 0), dx, 1) != seg)
+fill = mask & ~edge
+ey, ex = np.nonzero(edge); fy, fx = np.nonzero(fill)
+n_edge = int(N * 0.5)
 ie = rng.choice(len(ex), n_edge, replace=len(ex) < n_edge)
-iff = rng.choice(len(fx), N - n_edge, replace=False)
+iff = rng.choice(len(fx), N - n_edge, replace=len(fx) < N - n_edge)
 target = np.concatenate([np.stack([ex[ie], ey[ie]], 1), np.stack([fx[iff], fy[iff]], 1)]).astype(float)
-target += rng.normal(0, 0.6, target.shape)
-perm = rng.permutation(N); target = target[perm]
+dz = np.concatenate([depth[ey[ie], ex[ie]], depth[fy[iff], fx[iff]]])
+near = 1 - (dz - dz.min()) / max(np.ptp(dz), 1e-6)        # 1 = closest to camera
+target += rng.normal(0, 0.5, target.shape)
+perm = rng.permutation(N); target = target[perm]; near = near[perm]
 
 # ---------------- start positions (noise)
 P0 = np.stack([rng.uniform(0, W, N), rng.uniform(0, H, N)], 1)
@@ -163,6 +139,8 @@ def render(pos, cols, theme, g, prev=None):
 
 for name, th in THEMES.items():
     cols = grad(th["stops"], key)
+    shade = (0.45 + 0.55 * near)[:, None]
+    cols = cols * shade + th["bg"] * (1 - shade)
     ims = [render(frames_pos[i], cols, th, glow[i],
                   frames_pos[i - 1] if F_NOISE <= i < F_NOISE + F_FLOW + F_MORPH else None) for i in range(NF)]
     # one shared palette from a few sample frames
