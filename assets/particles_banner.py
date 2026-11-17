@@ -1,6 +1,6 @@
-"""Header animation: noise -> flow -> robot -> noise (seamless loop).
+"""Header animation: noise -> flow -> spiral -> noise (seamless loop).
 Particles start scattered, get carried by a vortex-street flow, gather into a
-quadruped silhouette, then dissolve back to where they started."""
+gather into a spinning spiral distribution, then dissolve back to where they started."""
 import sys, os
 import numpy as np
 from PIL import Image, ImageDraw
@@ -12,27 +12,20 @@ N = 3200
 rng = np.random.default_rng(7)
 
 # ---------------- timeline (frames)
-F_NOISE, F_FLOW, F_MORPH, F_HOLD, F_DISS = 18, 62, 38, 26, 34
+F_NOISE, F_FLOW, F_MORPH, F_HOLD, F_DISS = 18, 58, 36, 40, 30
 NF = F_NOISE + F_FLOW + F_MORPH + F_HOLD + F_DISS
 DUR = 50  # ms per frame
 
-# ---------------- robot: Unitree Go2 silhouette rendered from MuJoCo (go2_mask.py)
-_z = np.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "go2.npz"))
-seg, depth = _z["seg"], _z["depth"]
-mask = seg >= 0
-# part edges: pixels whose neighbour belongs to a different geom (or background)
-edge = np.zeros_like(mask)
-for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-    edge |= mask & (np.roll(np.roll(seg, dy, 0), dx, 1) != seg)
-fill = mask & ~edge
-ey, ex = np.nonzero(edge); fy, fx = np.nonzero(fill)
-n_edge = int(N * 0.5)
-ie = rng.choice(len(ex), n_edge, replace=len(ex) < n_edge)
-iff = rng.choice(len(fx), N - n_edge, replace=len(fx) < N - n_edge)
-target = np.concatenate([np.stack([ex[ie], ey[ie]], 1), np.stack([fx[iff], fy[iff]], 1)]).astype(float)
-dz = np.concatenate([depth[ey[ie], ex[ie]], depth[fy[iff], fx[iff]]])
-near = 1 - (dz - dz.min()) / max(np.ptp(dz), 1e-6)        # 1 = closest to camera
-target += rng.normal(0, 0.5, target.shape)
+# ---------------- target: a 3-arm spiral distribution (toy target for generative samplers)
+CXs, CYs = W * 0.5, H * 0.5
+arm = rng.integers(0, 3, N)
+u = rng.uniform(0, 1, N) ** 0.8
+rad = 8 + u * 132
+ang = arm * 2 * np.pi / 3 + u * 3.4 + rng.normal(0, 0.10 + 0.18 * u, N)
+target = np.stack([CXs + rad * np.cos(ang) * 1.9, CYs + rad * np.sin(ang) * 0.92], 1)
+core = rng.random(N) < 0.10                                    # dense bright core
+target[core] = np.stack([CXs + rng.normal(0, 12, core.sum()) * 1.9, CYs + rng.normal(0, 10, core.sum())], 1)
+near = 1 - np.clip(np.hypot((target[:, 0] - CXs) / 1.9, target[:, 1] - CYs) / 150, 0, 1) * 0.75
 perm = rng.permutation(N); target = target[perm]; near = near[perm]
 
 # ---------------- start positions (noise)
@@ -58,6 +51,11 @@ def velocity(p, t):
 
 def ease(s): return s * s * (3 - 2 * s)
 
+def spin(pts, th):
+    x = (pts[:, 0] - CXs) / 1.9; y = pts[:, 1] - CYs
+    c, s_ = np.cos(th), np.sin(th)
+    return np.stack([CXs + (c * x - s_ * y) * 1.9, CYs + s_ * x + c * y], 1)
+
 # ---------------- simulate positions per frame
 frames_pos, glow = [], []
 p = P0.copy()
@@ -77,18 +75,20 @@ for f in range(F_FLOW):                          # flow: advection ramps up
     frames_pos.append(p.copy()); glow.append(0.0)
 p_flow = p.copy()
 swirl_dir = rng.normal(0, 1, (N, 2))
-for f in range(F_MORPH):                         # morph into robot, still drifting with the flow
+for f in range(F_MORPH):                         # gather into the spiral, still drifting with the flow
     s = ease((f + 1) / F_MORPH)
     for _ in range(3):
         p_flow = p_flow + (1 - s) * velocity(p_flow, t); t += 1.0
     p_flow[:, 0] %= W
     pos = (1 - s) * p_flow + s * target + np.sin(np.pi * s) * 14 * swirl_dir
     frames_pos.append(pos); glow.append(s)
-for f in range(F_HOLD):                          # hold: gentle shimmer
-    frames_pos.append(target + rng.normal(0, 0.35, target.shape)); glow.append(1.0)
+SPIN = 0.035
+for f in range(F_HOLD):                          # hold: the spiral spins
+    frames_pos.append(spin(target, SPIN * (f + 1))); glow.append(1.0)
+target_end = spin(target, SPIN * F_HOLD)
 for f in range(F_DISS):                          # dissolve back to the start (forward diffusion)
     s = ease((f + 1) / F_DISS)
-    pos = (1 - s) * target + s * P0 + np.sin(np.pi * s) * 22 * rng.normal(0, 1, P0.shape)
+    pos = (1 - s) * spin(target_end, SPIN * (f + 1) * (1 - s)) + s * P0 + np.sin(np.pi * s) * 22 * rng.normal(0, 1, P0.shape)
     frames_pos.append(pos); glow.append(1 - s)
 assert len(frames_pos) == NF
 
@@ -98,7 +98,8 @@ def grad(stops, t):
     c = np.array([hx(s) for s in stops]); t = np.clip(t, 0, 1) * (len(stops) - 1)
     i = np.minimum(t.astype(int), len(stops) - 2); a = (t - i)[:, None]
     return c[i] * (1 - a) + c[i + 1] * a
-key = (target[:, 0] - target[:, 0].min()) / np.ptp(target[:, 0])   # colour by place on robot
+key = (np.arctan2(target[:, 1] - CYs, (target[:, 0] - CXs) / 1.9) / (2 * np.pi)) % 1.0
+key = 1 - np.abs(2 * key - 1)   # wrap smoothly
 
 THEMES = {
     "dark":  dict(bg=hx("#0d1117"), stops=["#38bdf8", "#818cf8", "#f472b6", "#fb923c"], add=True),
@@ -142,11 +143,11 @@ for name, th in THEMES.items():
     shade = (0.45 + 0.55 * near)[:, None]
     cols = cols * shade + th["bg"] * (1 - shade)
     ims = [render(frames_pos[i], cols, th, glow[i],
-                  frames_pos[i - 1] if F_NOISE <= i < F_NOISE + F_FLOW + F_MORPH else None) for i in range(NF)]
+                  frames_pos[i - 1] if F_NOISE <= i < F_NOISE + F_FLOW + F_MORPH + F_HOLD else None) for i in range(NF)]
     # one shared palette from a few sample frames
     path = f"{OUT}/hero-{name}.webp"
     small = [im.resize((880, int(round(880 * H / W))), Image.LANCZOS) for im in ims]
     small[0].save(path, save_all=True, append_images=small[1:], duration=DUR, loop=0, quality=58, method=6)
-    for tag, i in [("noise", 3), ("flow", F_NOISE + F_FLOW - 1), ("robot", F_NOISE + F_FLOW + F_MORPH + 4)]:
+    for tag, i in [("noise", 3), ("flow", F_NOISE + F_FLOW - 1), ("spiral", F_NOISE + F_FLOW + F_MORPH + 12)]:
         ims[i].save(f"{OUT}/still-{name}-{tag}.png")
     print(name, NF, "frames", f"{os.path.getsize(path)/1e6:.2f} MB", flush=True)
