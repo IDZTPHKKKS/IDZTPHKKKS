@@ -15,4 +15,4 @@ stuff i'm working on rn :)
 - [**reynolds-grid-study**](https://github.com/IDZTPHKKKS/reynolds-grid-study): trained 200+ neural nets on turbulence to see where they break
 - [**cfdml**](https://github.com/IDZTPHKKKS/cfdml): small cli tools for poking at cfd results
 
-[linkedin](https://www.linkedin.com/in/shyaam-mahesh-7b8341261/) · [chess](https://ratings.fide.com/profile/35054074) ♟️
+[linkedin](https://www.linkedin.com/in/shyaam-mahesh-7b8341261/) · [chess](https://ratings.fide.com/profile/35054074)
